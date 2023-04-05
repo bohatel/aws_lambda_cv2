@@ -5,7 +5,7 @@ import numpy as np
 import boto3
 import botocore
 
-from dataclasses import dataclass
+from dataclasses import dataclass, is_dataclass
 from enum import Enum
 
 class ContourType(Enum):
@@ -29,10 +29,12 @@ class NumpyToJsonEncoder(json.JSONEncoder):
             return float(obj)
         elif isinstance(obj, np.ndarray):
             return obj.tolist()
+        elif is_dataclass(obj):
+            return obj.__dict__
         else:
             return super(NumpyToJsonEncoder, self).default(obj)
 
-def find_contours(image_file: str, binarization_threshold: int, outer_only: bool):
+def find_contours(image_file: str, binarization_threshold: int, outer_only: bool, size_threshold: int):
     assert os.path.exists(image_file), f'{image_file} does not exist'
 
     img = cv2.imread(image_file)
@@ -45,7 +47,16 @@ def find_contours(image_file: str, binarization_threshold: int, outer_only: bool
     mode = cv2.RETR_EXTERNAL if outer_only else cv2.RETR_TREE
     contours, _ = cv2.findContours(binary, mode, cv2.CHAIN_APPROX_SIMPLE)
 
-    return contours
+    surving_contours = []
+    for c in contours:
+        area = cv2.contourArea(c)
+        if area > size_threshold:
+            surving_contours.append(Contour(
+                area=area,
+                perimeter=cv2.arcLength(c, True),
+                points=c))
+
+    return surving_contours
 
 def lambda_handler(event, context):
     tmp_filename='/tmp/work_image'
@@ -54,6 +65,7 @@ def lambda_handler(event, context):
     img_file = event['image']
     binarization_threshold = event['params']['binarization_threshold']
     exclude_enclosed = event['params']['outer_only']
+    size_threshold = event['params']['size_threshold']
 
     img_extension = img_file.split('.')[-1]
     tmp_filename = f'{tmp_filename}.{img_extension}'
@@ -71,7 +83,7 @@ def lambda_handler(event, context):
             raise
 
     try:
-        contours = find_contours(tmp_filename, binarization_threshold, exclude_enclosed)
+        contours = find_contours(tmp_filename, binarization_threshold, exclude_enclosed, size_threshold)
     except AssertionError as e:
         return {
             'statusCode': 500,
@@ -84,6 +96,5 @@ def lambda_handler(event, context):
     }
 
 if __name__ == "__main__":
-   contours = find_contours("half-circle.png", 33, True)
-   print(type(contours[0]))
-   # print(json.dumps(contours, cls=NumpyToJsonEncoder))
+   contours = find_contours("half-circle.png", 33, True, 70)
+   print(json.dumps(contours, cls=NumpyToJsonEncoder))
