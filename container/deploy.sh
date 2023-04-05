@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ACCOUNT_ID=$(aws sts get-caller-identity | jq -r ".Account")
-FUNCTION_NAME=opencv_gray_container
+FUNCTION_NAME=object_detection_container
 ROLE_NAME=lambda-opencv_exec
 IMAGE_URI=$(aws ecr describe-repositories --repository-names lambda-functions | jq -r ".repositories[0].repositoryUri")
 REGISTRY_URI=$(aws ecr describe-repositories --repository-names lambda-functions | jq -r '.repositories[0].repositoryUri | split("/")[0]')
